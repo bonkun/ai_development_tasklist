@@ -22,7 +22,15 @@ type Tasklist struct {
 	Due           time.Time `json:"due" binding:"required"`
 	Priority      int       `json:"priority" binding:"required,min=1,max=3"`
 	Progress_id   int       `json:"progress_id" binding:"required,min=0,max=100"`
+	Priority_name string    `json:"priority_name,omitempty"`
 	Progress_name string    `json:"progress_name,omitempty"`
+	Position      float64   `json:"position,omitempty"`
+}
+
+type User struct {
+	Id            *int   `json:"id" binding:"omitempty"`
+	Username      string `json:"username" binding:"required,max=255"`
+	Password      string `json:"password" binding:"required,max=255"`
 }
 
 type Progress_status struct {
@@ -70,10 +78,11 @@ func GetPriorityMessages() map[int]string {
 	}
 	return copy
 }
+
 func getTasklist(c *gin.Context) {
 	log.Println("getTasklist関数が呼び出されました")
 
-	rows, err := db.Query("SELECT tasklist.id, title, content, due, priority, progress_name FROM tasklist JOIN task_progress ON tasklist.progress_id = task_progress.id")
+	rows, err := db.Query("SELECT tasklist.id, title, content, due, priority, progress_name, position FROM tasklist JOIN task_progress ON tasklist.progress_id = task_progress.id")
 	if err != nil {
 		log.Printf("データベースクエリエラー: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -84,7 +93,7 @@ func getTasklist(c *gin.Context) {
 	var tasks []gin.H
 	for rows.Next() {
 		var task Tasklist
-		err := rows.Scan(&task.Id, &task.Title, &task.Content, &task.Due, &task.Priority, &task.Progress_name)
+		err := rows.Scan(&task.Id, &task.Title, &task.Content, &task.Due, &task.Priority, &task.Progress_name, &task.Position)
 		if err != nil {
 			log.Printf("データベーススキャンエラー: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -96,8 +105,10 @@ func getTasklist(c *gin.Context) {
 			"title":         task.Title,
 			"content":       task.Content,
 			"due":           task.Due,
-			"priority":      task.GetPriorityMessage(),
+			"priority_name": task.GetPriorityMessage(),
+			"priority":      task.Priority,
 			"progress_name": task.Progress_name,
+			"position":      task.Position,
 		})
 	}
 
@@ -111,12 +122,34 @@ func getTasklist(c *gin.Context) {
 	c.JSON(http.StatusOK, tasks)
 }
 
-func insertTasklist(c *gin.Context) {
-	var request struct {
-		Tasks []Tasklist `json:"tasks" binding:"required,dive"`
-	}
+func convertPriorityLabelToId(priority string) int {
+    switch priority {
+    case "高":
+        return 1
+    case "中":
+        return 2
+    case "低":
+        return 3
+    default:
+        return 0 // 不明な優先度の場合のデフォルト値
+    }
+}
 
-	// リクエストボディをログに出力
+func insertTasklist(c *gin.Context) {
+    var request struct {
+        Tasks []struct {
+            Title       string `json:"title" binding:"required,max=255"`
+            Content     string `json:"content" binding:"required,max=255"`
+            Due         string `json:"due" binding:"required"`
+			Priority    int    `json:"priority"`
+            Priority_name      string    `json:"priority_name" binding:"required"`
+            Progress_id   int    `json:"progress_id" binding:"required,min=0,max=100"`
+			Position      float64 `json:"position"`
+        } `json:"tasks" binding:"required,dive"`
+    }
+
+
+	// リクエストボディをログに
 	body, err := c.GetRawData()
 	if err != nil {
 		log.Printf("リクエストボディの読み取りエラー: %v", err)
@@ -129,6 +162,7 @@ func insertTasklist(c *gin.Context) {
 	c.Request.Body = ioutil.NopCloser(bytes.NewBuffer(body))
 
 	if err := c.ShouldBindJSON(&request); err != nil {
+		log.Printf("JSONバインドエラー: %v", err)
 		var errorMessages []string
 		if ve, ok := err.(validator.ValidationErrors); ok {
 			for _, e := range ve {
@@ -139,6 +173,7 @@ func insertTasklist(c *gin.Context) {
 			errorMessages = append(errorMessages, "不正なリクエスト形式です")
 		}
 
+		log.Printf("バインドエラー詳細: %v", errorMessages)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"errors": errorMessages,
 		})
@@ -150,6 +185,9 @@ func insertTasklist(c *gin.Context) {
 		log.Printf("タイトル: %s", task.Title)
 		log.Printf("内容: %s", task.Content)
 		log.Printf("期限: %v", task.Due)
+		log.Printf("優先度: %d", task.Priority)
+		log.Printf("進捗ID: %d", task.Progress_id)
+		log.Printf("位置: %f", task.Position)
 	}
 
 	var successInserts []gin.H
@@ -163,8 +201,12 @@ func insertTasklist(c *gin.Context) {
 	}
 
 	for _, task := range request.Tasks {
-		result, err := tx.Exec("INSERT INTO tasklist (title, content, due, priority, progress_id) VALUES (?, ?, ?, ?, ?)",
-			task.Title, task.Content, task.Due, task.Priority, task.Progress_id)
+		// 文字列の優先順位を整数に変換
+		task.Priority = convertPriorityLabelToId(task.Priority_name)
+
+		log.Printf("挿入するタスク: タイトル=%s, 内=%s, 期限=%v, 優先度=%d, 進捗ID=%d, 位置=%f", task.Title, task.Content, task.Due, task.Priority, task.Progress_id, task.Position)
+		result, err := tx.Exec("INSERT INTO tasklist (title, content, due, priority, progress_id, position) VALUES (?, ?, ?, ?, ?, ?)",
+			task.Title, task.Content, task.Due, task.Priority, task.Progress_id, task.Position)
 		if err != nil {
 			log.Printf("データベース挿入エラー: %v", err)
 			failedInserts = append(failedInserts, gin.H{"title": task.Title, "error": err.Error()})
@@ -183,6 +225,7 @@ func insertTasklist(c *gin.Context) {
 
 	if len(failedInserts) > 0 {
 		tx.Rollback()
+		log.Printf("挿入失敗: %v", failedInserts)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"failedInserts":  failedInserts,
 			"successInserts": successInserts,
@@ -197,90 +240,129 @@ func insertTasklist(c *gin.Context) {
 		return
 	}
 
+	log.Println("タスクの挿入に成功しました")
 	c.JSON(http.StatusOK, gin.H{
 		"successInserts": successInserts,
 	})
 }
 
 func updateTasklist(c *gin.Context) {
-	var request struct {
-		Tasks []Tasklist `json:"tasks" binding:"required,dive"`
-	}
-	if err := c.ShouldBindJSON(&request); err != nil {
-		var errorMessages []string
-		if ve, ok := err.(validator.ValidationErrors); ok {
-			for _, e := range ve {
-				message := getValidationMessage(e.Field(), e.Tag(), validationMessages)
-				errorMessages = append(errorMessages, message)
-			}
-		} else {
-			errorMessages = append(errorMessages, "不正なリクエスト形式です")
-		}
+    var request struct {
+        Tasks []struct {
+            Id           *int   `json:"id" binding:"required"`
+            Title        string `json:"title" binding:"required,max=255"`
+            Content      string `json:"content" binding:"required,max=255"`
+            Due          string `json:"due" binding:"required"`
+            PriorityName string `json:"priority_name"`
+            Priority     int    `json:"priority"`
+            Progress_id  int    `json:"progress_id" binding:"required,min=0,max=100"`
+            Position     float64 `json:"position"`
+        } `json:"tasks" binding:"required,dive"`
+    }
 
-		c.JSON(http.StatusBadRequest, gin.H{
-			"errors": errorMessages,
-		})
+    // リクエストボディをログに出力
+    body, err := c.GetRawData()
+    if err != nil {
+        log.Printf("リクエストボディの読み取りエラー: %v", err)
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "内部サーバーエラー"})
+        return
+    }
+    log.Printf("受信したJSON: %s", string(body))
+
+    // JSONを再度バインドするためにリクエストボディをリセット
+    c.Request.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+    if err := c.ShouldBindJSON(&request); err != nil {
+        log.Printf("JSONバインドエラー: %v", err)
+        c.JSON(http.StatusBadRequest, gin.H{"error": "不正なリクエスト形式です"})
+        return
+    }
+
+    var successUpdates []gin.H
+    var failedUpdates []gin.H
+
+    for _, task := range request.Tasks {
+        if task.Id == nil {
+            failedUpdates = append(failedUpdates, gin.H{"id": nil, "error": "IDは必須です"})
+            continue
+        }
+
+        // Convert priority_name to priority
+        task.Priority = convertPriorityLabelToId(task.PriorityName)
+
+        log.Printf("実行するSQL: UPDATE tasklist SET title=%s, content=%s, due=%v, priority=%d, progress_id=%d, position=%f WHERE id=%d", task.Title, task.Content, task.Due, task.Priority, task.Progress_id, task.Position, *task.Id)
+
+        result, err := db.Exec(
+            "UPDATE tasklist SET title=?, content=?, due=?, priority=?, progress_id=?, position=? WHERE id=?",
+            task.Title,
+            task.Content,
+            task.Due,
+            task.Priority,
+            task.Progress_id,
+            task.Position,
+            task.Id,
+        )
+        if err != nil {
+            log.Printf("データベース更新エラー: %v", err)
+            failedUpdates = append(failedUpdates, gin.H{"id": *task.Id, "error": err.Error()})
+            continue
+        }
+
+        rowsAffected, err := result.RowsAffected()
+        if err != nil {
+            log.Printf("RowsAffected取得エラー: %v", err)
+            failedUpdates = append(failedUpdates, gin.H{"id": *task.Id, "error": "内部サーバーエラー"})
+            continue
+        }
+
+        if rowsAffected == 0 {
+            log.Printf("タスクが見つからないか、変更がありません: ID %d", *task.Id)
+            failedUpdates = append(failedUpdates, gin.H{"id": *task.Id, "error": "指定されたIDのタスクが見つからないか、変更がありません"})
+            continue
+        }
+
+        successUpdates = append(successUpdates, gin.H{
+            "id":          task.Id,
+            "title":       task.Title,
+            "content":     task.Content,
+            "due":         task.Due,
+            "priority":    task.Priority,
+            "progress_id": task.Progress_id,
+        })
+    }
+
+    response := gin.H{
+        "successUpdates": successUpdates,
+        "failedUpdates":  failedUpdates,
+    }
+
+    if len(failedUpdates) > 0 && len(successUpdates) > 0 {
+        c.JSON(http.StatusPartialContent, response)
+    } else if len(failedUpdates) > 0 {
+        c.JSON(http.StatusBadRequest, response)
+    } else {
+        c.JSON(http.StatusOK, response)
+    }
+}
+
+func login(c *gin.Context) {
+	var loginData User
+
+	if err := c.ShouldBindJSON(&loginData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
 
-	log.Printf("受信したタスク数: %d", len(request.Tasks))
-	for _, task := range request.Tasks {
-		log.Printf("タスクID: %v, タイトル: %s", *task.Id, task.Title)
+	var user User
+	err := db.QueryRow("SELECT id, username, password FROM users WHERE username = ?", loginData.Username).Scan(&user.Id, &user.Username, &user.Password)
+	if err != nil || user.Password != loginData.Password {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+		return
 	}
 
-	var successUpdates []Tasklist
-	var failedUpdates []gin.H
+	// 簡単なトークンを生成（ここではユーザー名をそのまま使用）
+	token := user.Username
 
-	for _, task := range request.Tasks {
-		if task.Id == nil {
-			failedUpdates = append(failedUpdates, gin.H{"id": nil, "error": "IDは必須です"})
-			continue
-		}
-		log.Printf("実行するSQL: UPDATE tasklist SET title=%s, content=%s, due=%v, priority=%d WHERE id=%d", task.Title, task.Content, task.Due, task.Priority, *task.Id)
-		// データベースにタスクを更新
-		result, err := db.Exec(
-			"UPDATE tasklist SET title=?, content=?, due=?, priority=?, progress_id=? WHERE id=?",
-			task.Title,
-			task.Content,
-			task.Due,
-			task.Priority,
-			task.Progress_id,
-			task.Id,
-		)
-		if err != nil {
-			log.Printf("データベース更新エラー: %v", err)
-			failedUpdates = append(failedUpdates, gin.H{"id": *task.Id, "error": err.Error()})
-			continue
-		}
-
-		rowsAffected, err := result.RowsAffected()
-		if err != nil {
-			log.Printf("RowsAffected取得エラー: %v", err)
-			failedUpdates = append(failedUpdates, gin.H{"id": *task.Id, "error": "内部サーバーエラー"})
-			continue
-		}
-
-		if rowsAffected == 0 {
-			log.Printf("タスクが見つからないか、変更がありません: ID %d", *task.Id)
-			failedUpdates = append(failedUpdates, gin.H{"id": *task.Id, "error": "指定されたIDのタスクが見つからないか、変更がありません"})
-			continue
-		}
-
-		successUpdates = append(successUpdates, task)
-	}
-
-	response := gin.H{
-		"successUpdates": successUpdates,
-		"failedUpdates":  failedUpdates,
-	}
-
-	if len(failedUpdates) > 0 && len(successUpdates) > 0 {
-		c.JSON(http.StatusPartialContent, response)
-	} else if len(failedUpdates) > 0 {
-		c.JSON(http.StatusBadRequest, response)
-	} else {
-		c.JSON(http.StatusOK, response)
-	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "token": token})
 }
 
 func deleteTasklist(c *gin.Context) {
@@ -333,16 +415,11 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	r.POST("/cat", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "Hello Worl from Gin!",
-		})
-	})
-
 	r.GET("/tasklist", getTasklist)
 	r.POST("/insert", insertTasklist)
 	r.POST("/update", updateTasklist)
 	r.GET("/delete/:id", deleteTasklist)
+	r.POST("/login", login)
 	r.Run(":8080")
 
 }

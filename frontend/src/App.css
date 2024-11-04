@@ -45,19 +45,23 @@ ul {
 .column {
   display: inline-block;
   vertical-align: top;
-  width: 200px;
-  margin: 0 10px;
+  width: 220px;
+  margin: 0 15px;
   position: relative;
+  background-color: #f7f9fc;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 10px;
 }
 
 .droppable-col {
-  background-color: #e2e4e6;
-  padding: 10px;
-  border-radius: 5px;
-  min-height: 400px;
+  background-color: #e8ebf0;
+  padding: 15px;
+  border-radius: 8px;
+  min-height: 450px;
   display: flex;
   flex-direction: column;
-  align-items: center; /* カードを中央に配置 */
+  align-items: center;
 }
 
 .column:not(:last-child)::after {
@@ -71,22 +75,180 @@ ul {
 }
 
 .task-card {
-  background-color: #f9f9f9;
-  border: 1px solid #ddd;
+  background-color: #ffffff;
+  border: 1px solid #d1d9e6;
   border-radius: 8px;
-  padding: 8px;
-  margin-bottom: 8px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  width: calc(100% - 16px); /* カードの幅を調整して余白を確保 */
-  box-sizing: border-box; /* パディングとボーダーを含めて幅を計算 */
+  padding: 12px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  width: calc(100% - 24px);
+  box-sizing: border-box;
+  transition: transform 0.2s;
+}
+
+.task-card:hover {
+  transform: translateY(-3px);
 }
 
 .task-card h3 {
   margin-top: 0;
-  font-size: 0.9em;
+  font-size: 1em;
+  color: #333;
 }
 
 .task-card p {
-  margin: 2px 0;
-  font-size: 0.8em;
+  margin: 4px 0;
+  font-size: 0.85em;
+  color: #555;
+}
+
+.modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: #fff;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  width: 90%;
+  max-width: 450px;
+}
+
+.modal input, .modal select {
+  display: block;
+  margin: 12px 0;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+
+.modal button {
+  margin: 8px;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  background-color: #007bff;
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.modal button:hover {
+  background-color: #0056b3;
+}
+
+/* ログイン画面のスタイ */
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background-color: #f0f2f5;
+}
+
+.login-form {
+  background-color: white;
+  padding: 40px;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 400px;
+}
+
+.login-form h2 {
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.login-form input {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 15px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+.login-form button {
+  width: 100%;
+  padding: 10px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.login-form button:hover {
+  background-color: #0056b3;
+}
+
+.login-form p {
+  color: red;
+  margin-top: 10px;
+}
+
+.fade-enter {
+  opacity: 0;
+  transform: translateX(100%);
+}
+
+.fade-enter-active {
+  opacity: 1;
+  transform: translateX(0);
+  transition: opacity 500ms, transform 500ms;
+}
+
+.fade-exit {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.fade-exit-active {
+  opacity: 0;
+  transform: translateX(-100%);
+  transition: opacity 500ms, transform 500ms;
+}
+
+.new-task-button {
+  margin: 10px 0;
+  padding: 10px 20px;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.3s, transform 0.2s;
+  font-size: 1em;
+}
+
+.new-task-button:hover {
+  background-color: #218838;
+  transform: translateY(-2px);
+}
+
+.kanban-container {
+  position: relative;
+}
+
+.logout-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 8px 16px;
+  background-color: #ff4d4d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.logout-button:hover {
+  background-color: #e60000;
 }
